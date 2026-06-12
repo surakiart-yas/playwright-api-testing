@@ -1,0 +1,10 @@
+{
+  // VS Code will prompt to install these on first open.
+  // Keep the list minimal — one per concern.
+  "recommendations": [
+    "ms-playwright.playwright",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "editorconfig.editorconfig"
+  ]
+}

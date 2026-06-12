@@ -1,0 +1,222 @@
+# The CONTRACT for the exemplar domain (products + orders). This is the source of truth
+# the tests assert — including where the mock deliberately violates it (the seeded bugs,
+# see mock/server.ts header). Spec is truth; the mock is "the backend under test".
+openapi: 3.0.3
+info:
+  title: Template Exemplar API (products + orders)
+  version: 1.0.0
+  description: >
+    Minimal teaching contract. Success envelope: { code: 'OK', message, requestId, data }.
+    Error envelope: { code, error, message, requestId, errorData? }. errorData entries:
+    missing required field → { field, tag: 'body', reason: 'required' } (VALIDATION_FAILED);
+    present-but-invalid value → { field, tag: 'invalid' } (INVALID_DATA).
+servers:
+  - url: http://localhost:8787
+
+paths:
+  /health:
+    get:
+      summary: Liveness probe (used by Playwright webServer + warmup)
+      responses:
+        '200':
+          description: ok
+
+  /products:
+    post:
+      summary: Create a product (status starts at draft)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, sku, price] # price IS required — the mock's seeded BUG #1 violates this
+              properties:
+                name: { type: string, maxLength: 100 }
+                sku: { type: string, pattern: '^[A-Za-z0-9-]{3,40}$', description: unique }
+                price: { type: number, minimum: 0 }
+                stock: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '201':
+          description: created — data = Product
+          content:
+            application/json:
+              examples:
+                created:
+                  value:
+                    code: OK
+                    message: success
+                    data:
+                      {
+                        id: '…',
+                        name: '…',
+                        sku: '…',
+                        price: 49.99,
+                        stock: 10,
+                        status: draft,
+                        createdAt: '…',
+                        updatedAt: '…',
+                      }
+        '400':
+          description: VALIDATION_FAILED (missing field) / INVALID_DATA (invalid value)
+          content:
+            application/json:
+              examples:
+                missingField:
+                  value:
+                    code: VALIDATION_FAILED
+                    error: validation_failed
+                    message: Required field(s) missing.
+                    errorData: [{ field: price, tag: body, reason: required }]
+                invalidValue:
+                  value:
+                    code: INVALID_DATA
+                    error: invalid_data
+                    message: Invalid field value(s).
+                    errorData: [{ field: price, tag: invalid }]
+        '409':
+          description: DUPLICATE — sku already exists
+          content:
+            application/json:
+              examples:
+                duplicate:
+                  value:
+                    code: DUPLICATE
+                    error: duplicate
+                    message: A product with sku 'X' already exists.
+                    errorData: [{ field: sku, tag: duplicate }]
+    get:
+      summary: List products (paged; internal fields are projected away)
+      description: >
+        Items carry the public Product shape ONLY — internal fields (e.g. costPrice)
+        must never appear. (The mock's seeded BUG #2 violates this.)
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: name prefix filter }
+        - { name: status, in: query, schema: { type: string, enum: [draft, published, archived] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - {
+            name: pageSize,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 20 },
+          }
+      responses:
+        '200':
+          description: data = { items[], total, page, pageSize }
+
+  /products/{id}:
+    get:
+      summary: Get a product by id
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: data = Product }
+        '404': { description: 'NOT_FOUND / not_found' }
+    patch:
+      summary: Partial update (name / price / stock)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1 }
+                price: { type: number, minimum: 0 }
+                stock: { type: integer, minimum: 0 }
+      responses:
+        '200': { description: data = updated Product (a rejected update mutates nothing) }
+        '400': { description: 'INVALID_DATA — errorData names the field' }
+        '404': { description: 'NOT_FOUND / not_found' }
+    delete:
+      summary: Hard-delete a product
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: 'data = {}' }
+        '404': { description: 'NOT_FOUND / not_found' }
+
+  /products/{id}/status:
+    patch:
+      summary: 'Transition the state machine: draft → published → archived (archived terminal)'
+      description: Covered by the mock but NOT yet by the AOM layer — docs/exercises.md exercise 1.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [draft, published, archived] }
+      responses:
+        '200': { description: data = Product with the new status }
+        '400': { description: 'INVALID_DATA — unknown status value' }
+        '404': { description: 'NOT_FOUND' }
+        '422':
+          {
+            description: 'INVALID_TRANSITION / invalid_transition — disallowed move (e.g. archived → draft)',
+          }
+
+  /orders:
+    post:
+      summary: Place an order against a product (decrements its stock)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, quantity]
+              properties:
+                productId: { type: string }
+                quantity: { type: integer, minimum: 1 }
+      responses:
+        '201':
+          description: 'created — data = Order { id, productId, quantity, total: price×quantity, status: placed, createdAt }'
+        '400':
+          {
+            description: 'VALIDATION_FAILED (missing field) / INVALID_DATA (quantity < 1 or wrong type)',
+          }
+        '422':
+          description: >
+            INVALID_DATA — productId does not exist (errorData [{field: productId, tag: invalid}]),
+            or quantity exceeds stock (errorData [{field: quantity, tag: invalid, reason: insufficient_stock}]).
+
+  /orders/{id}:
+    get:
+      summary: Get an order by id
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: data = Order }
+        '404': { description: 'NOT_FOUND / not_found' }
+    delete:
+      summary: Cancel + remove an order (cleanup path; stock is NOT restocked)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: 'data = {}' }
+        '404': { description: 'NOT_FOUND / not_found' }
+
+components:
+  schemas:
+    Product:
+      type: object
+      description: Public shape — internal fields (costPrice) are never exposed on ANY read.
+      required: [id, name, sku, price, stock, status, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        sku: { type: string }
+        price: { type: number }
+        stock: { type: integer }
+        status: { type: string, enum: [draft, published, archived] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Order:
+      type: object
+      required: [id, productId, quantity, total, status, createdAt]
+      properties:
+        id: { type: string }
+        productId: { type: string }
+        quantity: { type: integer }
+        total: { type: number }
+        status: { type: string, enum: [placed, cancelled] }
+        createdAt: { type: string, format: date-time }
