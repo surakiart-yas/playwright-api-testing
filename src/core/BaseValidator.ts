@@ -48,8 +48,8 @@ export class BaseValidator {
    * can run further assertions without re-parsing. The schema is the single source for
    * both validation AND the response types (see service `schemas.ts` + `z.infer` in
    * `types.ts`). Service envelopes use `z.looseObject` so unknown infra fields are KEPT
-   * on the parsed body — projection/absence assertions (e.g. the products list leak
-   * check) stay meaningful. The `T` generic documents the expected shape at each call site.
+   * on the parsed body — field-absence assertions stay meaningful even if API adds fields.
+   * The `T` generic documents the expected shape at each call site.
    */
   static async expectSchema<T = unknown>(res: APIResponse, schema: z.ZodType): Promise<T> {
     const json = await res.json()

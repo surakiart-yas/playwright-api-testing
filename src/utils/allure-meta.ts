@@ -7,7 +7,7 @@ const STRUCTURAL_TAGS = new Set(['@isolated', '@flow', '@smoke', '@regression'])
  * Auto-applied labels for every test (wired via `auto: true` fixture in base.ts).
  *
  * Behaviors tree in Allure (Service → Type → Endpoint — optimised for QA/Dev navigation):
- *   epic    ← @<service> tag (e.g. @users → "Users", @products → "Products")
+ *   epic    ← @<service> tag (e.g. @users → "Users", @posts → "Posts")
  *                  Tests tagged with 2+ service tags → epic = "Cross-Service"
  *   feature ← @isolated → "Contract Tests"  |  @flow → "Business Flows"
  *   story   ← outermost `test.describe` title (e.g. "POST /users")
@@ -17,9 +17,10 @@ const STRUCTURAL_TAGS = new Set(['@isolated', '@flow', '@smoke', '@regression'])
  * endpoint. Without the story level, all tests for one service land in a flat
  * list — you can't tell how many cover POST /users vs DELETE /users/:id.
  *
- * Cross-service tests (multiple service tags) get their own "Cross-Service" epic
- * so source location (tests/flows/) matches report location — no first-tag-wins
- * surprise. See docs/decisions.md §2.
+ * Cross-service tests (multiple service tags) get their own "Cross-Service" epic so
+ * source location (tests/<svc>/flows/) matches report location — no first-tag-wins
+ * surprise. (Forward-looking: this template ships ONE service, so it is not exercised
+ * yet — it activates when a test carries 2+ service tags.) See docs/decisions.md §2.
  *
  * Layer (shown in test card sidebar):
  *   api ← always (this template is API-only)

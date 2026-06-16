@@ -1,68 +1,73 @@
-# Architecture — the layers and why each exists
+# Architecture — layer ต่างๆ และเหตุผลที่มีอยู่
 
-One page, design-first. Code detail lives in the linked files; rationale lives in
-[decisions.md](decisions.md) (§ numbers below).
+หน้าเดียว เน้น design รายละเอียดโค้ดอยู่ในไฟล์ที่ link ไว้; เหตุผลการตัดสินใจอยู่ใน
+[decisions.md](decisions.md) (ตัวเลข § อ้างอิงถึงเอกสารนั้น)
+ยังไม่รู้ว่า test / fixture / AOM คืออะไร? เริ่มที่ [concepts.md](concepts.md) ก่อน
 
+## 4 Layers
+
+```mermaid
+flowchart TB
+    subgraph T["tests/&lt;svc&gt;/ — BEHAVIOR (สิ่งที่ API ต้องทำ)"]
+        direction LR
+        T1["*.spec.ts<br/>isolated + flows/<br/>inline expect() = ค่า field, business rules §4"]
+    end
+    subgraph W["tests/&lt;svc&gt;/ — WIRING + PRECONDITIONS"]
+        direction LR
+        W1["fixtures.ts → inject client<br/>provisioner.ts → create/recycle/cleanup data"]
+    end
+    subgraph S["src/services/&lt;svc&gt;/ — AOM (one client per resource §16)"]
+        direction LR
+        S1["types.ts — request types + catalogs"]
+        S2["schemas.ts — Zod, SINGLE SOURCE ของ response shape §12"]
+        S3["Client.ts — HTTP surface (extends BaseClient)"]
+        S4["Validator.ts — structural asserts (extends BaseValidator) §4"]
+    end
+    subgraph C["src/core/ — FRAMEWORK (ไม่ผูกกับ domain)"]
+        direction LR
+        C1["BaseClient — verbs + auth + response-time check §18"]
+        C2["BaseValidator — expectStatus / expectSchema / verify"]
+        C3["types — ApiConfig · HttpStatus"]
+    end
+    subgraph I["src/fixtures/ + src/utils/ + src/config/ — INFRASTRUCTURE"]
+        direction LR
+        I1["workerRequest (pre-warmed) · apiConfig (env)<br/>http · reporting · allure-meta §1/§2 · random"]
+    end
+
+    T --> W --> S --> C --> I
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│ tests/<svc>/*.spec.ts            BEHAVIOR — what the API must do    │
-│   isolated (per-endpoint contract) + flows/ (composition)          │
-│   inline expect() = field values, business invariants        (§4)  │
-├─────────────────────────────────────────────────────────────────────┤
-│ tests/<svc>/fixtures.ts + provisioner.ts   WIRING + PRECONDITIONS  │
-│   test-scoped client · worker-scoped provisioner (create/recycle/  │
-│   cleanup) · skip-when-unconfigured                    (fixtures.md)│
-├─────────────────────────────────────────────────────────────────────┤
-│ src/services/<svc>/              AOM — one client per SERVICE (§18)│
-│   types.ts    request types + code/error catalogs (hand-written)   │
-│   schemas.ts  Zod, SINGLE SOURCE of response shape           (§13) │
-│   Client.ts   HTTP surface, extends BaseClient                     │
-│   Validator.ts structural asserts, extends BaseValidator      (§4) │
-├─────────────────────────────────────────────────────────────────────┤
-│ src/core/                        FRAMEWORK — service-agnostic      │
-│   BaseClient   verbs + auth header + auto response-time check (§20)│
-│   BaseValidator expectStatus/expectSchema/expectErrorData/verify   │
-│   types        ApiConfig · envelope type · HttpStatus              │
-├─────────────────────────────────────────────────────────────────────┤
-│ src/fixtures/base.ts + src/utils/ + src/config/   INFRASTRUCTURE   │
-│   workerRequest (pre-warmed, worker-scoped) · apiConfig (env)      │
-│   http (send+attach+log) · reporting · allure-meta (§1/§2) · random│
-├─────────────────────────────────────────────────────────────────────┤
-│ mock/server.ts                   THE BACKEND (offline, seeded bugs)│
-│   real Hono HTTP server via Playwright webServer        (§10, §15) │
-└─────────────────────────────────────────────────────────────────────┘
+
+## ทำไมแต่ละ layer ถึงมีอยู่
+
+- **core vs services** — `core` รู้เรื่อง HTTP และ assertions แต่ไม่รู้จัก domain เลย การเพิ่ม service ใหม่ใช้แค่สี่ไฟล์และไม่ต้องแก้ core; การแก้ core (เช่น response-time policy, §18) จะกระทบทุกที่พร้อมกัน
+- **one client per service, ไม่ใช่ per story (§16)** — REST เป็น resource-oriented; user story ทับซ้อนกันข้าม service แต่ resource ไม่ทับ story อาศัยอยู่ที่ test layer ซึ่งประกอบ client หลายตัวเข้าด้วยกัน
+- **schema เป็น single source (§12)** — Zod schema ทำหน้าที่ทั้ง validate response และ generate response types (`z.infer`) ทำให้ shape กับ type ไม่มีทางแยกออกจากกัน `looseObject` ทำให้ field แปลกๆ ที่ไม่ได้ประกาศยังมองเห็นได้ใน assertions
+- **two-layer assertions (§4, §5)** — validator assert structure (status, schema) เหมือนกันทุก test; test assert ค่าที่ทำให้ TC นั้นมีความหมาย ทั้งสอง layer ปรากฏใน report: boxed `Verify:` node จาก validator, inline diff (`toMatchObject`) จาก behavior
+- **fixtures ควบคุม scope (fixtures.md)** — request context เป็น worker-scoped (TCP pool อุ่นพร้อมต่อ worker หนึ่งชุด); config และ clients เป็น test-scoped (แต่ละ test ได้ `testInfo` ของตัวเองเพื่อให้ทุก request แนบไปถูก report) provisioner เป็น worker-scoped เพราะ cache และ cleanup ครอบคลุมหลาย test
+- **provision, don't seed (fixtures.md, §6, §8, §17)** — ทุก mutable precondition สร้างตอน runtime ใต้ prefix `autotest-`, นำกลับมาใช้ได้เมื่อเป็น read-only, และลบทิ้งใน teardown มีเพียง credentials และ deterministic reference data (constants, §17) เท่านั้นที่อยู่นอก tests
+
+## Trace ของ request หนึ่งครั้ง
+
+```mermaid
+sequenceDiagram
+    participant Test as test (spec)
+    participant Client as UsersClient
+    participant Base as BaseClient
+    participant API as GoRest API
+    participant Val as UsersValidator
+
+    Test->>Client: createUser(body)
+    Client->>Base: post('users', body)
+    Base->>API: HTTP POST + auth header
+    API-->>Base: response (status, json)
+    Base->>Base: จับ timing + แนบ attachment (masked)
+    Base->>Base: expectResponseTime (warn/fail tiers §18)
+    Base-->>Client: APIResponse
+    Client-->>Test: APIResponse
+    Test->>Val: expectUserSuccess(res)
+    Val->>Val: expectStatus → expectSchema (boxed "Verify:")
+    Val-->>Test: parsed json
+    Test->>Test: expect(json).toMatchObject({...}) — ค่าที่ TC พิสูจน์
 ```
 
-## Why each layer exists
-
-- **core vs services** — `core` knows HTTP and assertions, never a domain. A new service
-  adds four files and zero core changes; a core fix (e.g. the response-time policy, §20)
-  lands everywhere at once.
-- **one client per service, not per story (§18)** — REST is resource-oriented; stories
-  overlap services, resources don't. Stories live at the test layer, composing clients.
-- **schema as the single source (§13)** — the Zod schema both validates the response AND
-  generates the response types (`z.infer`), so shape and types cannot drift. `looseObject`
-  keeps unknown/leaked fields visible to assertions (the costPrice lesson).
-- **two-layer assertions (§4, §5)** — validators assert structure (status, schema, business
-  code) for every test identically; tests assert the values that make THIS test exist.
-  Both layers show up in the report: a boxed `Verify:` node per validator call, inline
-  diffs (`toMatchObject`) for behavior.
-- **fixtures own scope (fixtures.md)** — the request context is worker-scoped (one warmed
-  TCP pool per worker); config and clients are test-scoped (each test gets its own
-  `testInfo` so every request attaches to the right report). Provisioners are
-  worker-scoped because their cache and cleanup span tests.
-- **provision, don't seed (fixtures.md, §6, §8, §19)** — every mutable precondition is
-  created at runtime under the `autotest-` prefix, recycled where read-only, and removed
-  in teardown. Only credentials (none for the mock) and deterministic reference data
-  (constants, §19) live outside the tests.
-- **the mock is a real server (§15)** — tests exercise the real network stack, and the
-  seeded bugs make the discipline lessons (RED-by-design, leak detection) concrete.
-
-## Trace of one request
-
-`test` → `productsClient.createProduct(body)` → `BaseClient.post` → `sendRequest`
-(URL build, fetch, timing, masked attachment, debug log) → `expectResponseTime`
-(warn/fail tiers, §20) → back to the test → `ProductsValidator.expectCreateSuccess(res)`
-(status → schema → code, boxed `Verify:`) → inline `expect(json.data).toMatchObject(...)`.
-
-Read it in code: [tests/products/create.spec.ts](../tests/products/create.spec.ts) TC-001.
+อ่านในโค้ดได้ที่: [tests/users/create.spec.ts](../tests/users/create.spec.ts) TC-005

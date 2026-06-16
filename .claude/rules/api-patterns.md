@@ -1,80 +1,68 @@
 # API Patterns
 
-## Response Envelope
+## Response Envelope (GoRest)
 
-The template envelope signals success with `code: 'OK'` — there is NO `success` boolean:
-`{ code, message, requestId, data }`. Errors carry `{ code, error, message, errorData }`.
-(Many real APIs use a numeric sentinel like `'0000'` instead of `'OK'` — adapt the
-literal, keep the pattern.)
+GoRest คืน resource โดยตรง — ไม่มี wrapper envelope:
 
-- Build bespoke **Zod** schemas — copy `src/services/products/schemas.ts`. The success
-  validator asserts `code === 'OK'`; the error validator asserts `code` + `error` (see
-  `ProductsValidator`, `ProductCode` / `ProductError` in `products/types.ts`).
-- Always assert HTTP status before schema.
-- **The schema is the single source of truth for the shape.** Infer response data
-  types from it with `z.infer` in `types.ts` — never hand-write a parallel interface
-  (it drifts). Keep request types + const catalogs (`*Code` / `*Error` / enums)
-  hand-written.
-- **Use `z.looseObject`, not `z.object`, for envelopes and `data`** — it keeps unknown
-  infra fields (and any leaked field) on the parsed body, matching the old
-  `additionalProperties: true`. A stripping `z.object` would silently mask a leak that
-  an absence/projection test must catch (see products TC-010, the `costPrice` leak).
-- `types.ts` does `import type` from `schemas.ts`; `schemas.ts` imports the const
-  catalogs from `types.ts` as values. The type-only import is erased at runtime → no
-  import cycle.
+- **Success** → bare object หรือ array เช่น `{ id, name, email, gender, status }`
+- **422** → array `[{ field: string, message: string }]`
+- **401 / 404** → `{ message: string }`
 
-> Rationale for Zod over AJV/JSON-Schema (single source, why `looseObject`, what we
-> traded away): [docs/decisions.md §13](../../docs/decisions.md). The old template
-> `@core/schemas` (`{ data, message, success: boolean }` envelope) was removed — no
-> service ever used it.
-
-## BaseClient Rules
-
-`request` and `testInfo` are injected via constructor — never as method parameters:
+สร้าง Zod schema ใน `src/services/<svc>/schemas.ts` ต่อ resource:
 
 ```typescript
-// ✅ Correct
-async getProduct(id: string) {
-  return this.get<ProductData>(`products/${id}`)
+export const UserSchema = z.looseObject({
+  id: z.number(),
+  name: z.string(),
+  email: z.string(),
+  gender: z.enum(['male', 'female']),
+  status: z.enum(['active', 'inactive']),
+})
+export type User = z.infer<typeof UserSchema>
+```
+
+- **ใช้ `z.looseObject` ไม่ใช่ `z.object`** — เก็บ field แปลกๆ ที่ API แอบส่งมาไว้ ไม่ตัดทิ้ง
+- **Schema คือ single source of truth** — infer type ด้วย `z.infer` ไม่เขียน interface ซ้ำ
+- Assert HTTP status ก่อน schema เสมอ
+
+## BaseClient
+
+`request` และ `testInfo` inject ผ่าน constructor — ไม่ใส่เป็น parameter ของแต่ละ method:
+
+```typescript
+// ✅ ถูก
+async getUser(id: number) {
+  return this.get<User>(`users/${id}`)
 }
 
-// ❌ Wrong — don't pass request as a parameter
-async getProduct(request: APIRequestContext, id: string) { ... }
+// ❌ ผิด
+async getUser(request: APIRequestContext, id: number) { ... }
 ```
 
-- Auth headers → override `getAuthHeaders()` in the subclass
-- Optional per-call headers → last `headers` parameter
-- The two-tier response-time check happens automatically after every request
+- Auth headers → override `getAuthHeaders()` ใน subclass
+- Response-time check เกิดอัตโนมัติหลังทุก request
 
-## BaseValidator Rules
-
-```typescript
-// ✅ Correct — always static
-await BaseValidator.expectSchema(res, ProductsSchemas.product)
-
-// ❌ Wrong
-await this.expectSchema(res, ProductsSchemas.product)
-```
-
-Always assert HTTP status before schema:
+## BaseValidator
 
 ```typescript
-expect(res.status()).toBe(200)
-await BaseValidator.expectSchema(res, schema)
+// ✅ ถูก — เรียกแบบ static เสมอ
+await BaseValidator.expectSchema(res, UsersSchemas.user)
+
+// ❌ ผิด
+await this.expectSchema(res, UsersSchemas.user)
 ```
 
 ## Test Data
 
-- Unique IDs/codes → `@utils/random` (`randomAlphanumericCode`) — never `Math.random()`
-- Every created resource name must start with `TEST_PREFIX` (default `autotest-`) so cleanup can find it
-- Use `autotestSlug()` from `@utils/test-data` — never hardcode the prefix string
+- ทุก resource ที่สร้างต้องใช้ `autotestSlug()` จาก `@utils/test-data` เพื่อให้ cleanup หาเจอ
+- Email ต้องไม่ซ้ำ — ใส่ slug ลงไปด้วยเสมอ
 
 ```typescript
-// ✅ Correct
+// ✅ ถูก
 import { autotestSlug } from '@utils/test-data'
 const slug = autotestSlug()
-await productsClient.createProduct({ name: slug, sku: `AT-${randomAlphanumericCode(10)}`, ... })
+await usersClient.createUser({ name: slug, email: `${slug}@example.com`, ... })
 
-// ❌ Wrong — hardcoded prefix, fragile across renames
+// ❌ ผิด — hardcode prefix
 const name = `AutoTest_${randomAlphanumericCode(8)}`
 ```

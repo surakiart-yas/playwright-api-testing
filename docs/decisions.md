@@ -1,590 +1,505 @@
 # Decisions
 
-Why this project looks the way it does. Read this before changing patterns that
-seem strange — most "strange" choices here are deliberate.
+ทำไม project นี้ถึงมีหน้าตาแบบนี้ — อ่านก่อนที่จะแก้ไข pattern ที่ดูแปลก
+เพราะทางเลือกส่วนใหญ่ที่ "ดูแปลก" ในที่นี้ล้วนตั้งใจไว้แล้ว
 
-Each decision is dated, has a short **Context**, the **Decision**, and the
-**Reason** so you can judge whether the constraint still applies.
+แต่ละ decision จะมี **Context**, **Decision**, **Reason** และ **Trade-off**
+เพื่อให้คุณตัดสินได้ว่า constraint นั้นยังใช้ได้อยู่หรือไม่
 
 ---
 
-## 1. Allure tree: Service → Type (not Type → Service)
+## 1. Allure tree: Service → Type (ไม่ใช่ Type → Service)
 
-**Decision.** Allure `epic` = service (`@users`, `@products`). `feature` =
-`Contract Tests` (from `@isolated`) or `Business Flows` (from `@flow`).
+**Decision.** Allure `epic` = service tag `@<svc>` (เช่น `@users`) และ `feature` =
+`Contract Tests` (จาก `@isolated`) หรือ `Business Flows` (จาก `@flow`) ดังนั้นทุก
+test ต้องติด service tag `@users` (ที่ระดับ `test.describe`) ไม่งั้น epic จะว่าง
 
-**Reason.** Primary audience of the report is QA and Dev, not stakeholders.
-They navigate by service first ("what is the status of Products?"), then drill
-into test type. Keeping everything for one service under one epic avoids
-splitting health-state across two top-level groups.
+**Reason.** กลุ่มเป้าหมายหลักของ report คือ QA และ Dev ไม่ใช่ stakeholder
+พวกเขาเปิด report โดยมองที่ service ก่อน ("สถานะของ Users เป็นยังไง?") แล้วค่อย
+drill down ไปดู test type การจัดทุก test ของ service เดียวกันไว้ใต้ epic เดียวกัน
+จะได้ไม่ต้องกระจาย health state ออกเป็นหลาย group
 
-**Trade-off.** Stakeholders who want a type-first view ("how many contract
-violations are open?") use the **Categories** tab instead — it gives them the
-type-first grouping without restructuring the tree.
+**Trade-off.** Stakeholder ที่อยากดูแบบ type-first ("มี contract violation
+เปิดอยู่เท่าไหร่?") ให้ไปใช้แท็บ **Categories** แทน — ได้ grouping แบบ type-first
+โดยไม่ต้องปรับโครงสร้าง tree
 
 **Where.** [src/utils/allure-meta.ts](../src/utils/allure-meta.ts)
 
 ---
 
-## 2. Allure cross-service tests: dedicated "Cross-Service" epic
+## 2. Allure cross-service tests: epic "Cross-Service" แยกต่างหาก
 
-**Decision.** A test tagged with two or more service tags (e.g. both `@users` and
-`@products`) is grouped under a dedicated epic **`Cross-Service`** — not under any
-single service.
+**Decision.** Test ที่ติด tag สอง service tags ขึ้นไปจะถูกจัดอยู่ใน epic
+ชื่อ **`Cross-Service`** — ไม่อยู่ใต้ service ใด service หนึ่ง
 
-**Reason.** Two earlier options had problems:
+**Reason.** ตัวเลือกก่อนหน้านี้สองแบบมีปัญหา:
 
-1. _Apply both service tags as epic_ — Allure drops tests with multiple values
-   for the grouped label from the `--group-by` tree entirely. The test
-   disappears from the Behaviors view.
-2. _First service tag wins_ (previous decision) — the test ends up under Users
-   when its source lives in `tests/flows/`. Source ↔ report mismatch confuses
-   new contributors: "I edited `tests/flows/cross-service.spec.ts`, why is the
-   change showing under Users?"
+1. _ใส่ทั้งสอง service tag เป็น epic_ — Allure จะ drop test ที่มีหลายค่าใน
+   label ที่ใช้ group ออกจาก Behaviors view ทั้งหมด test จะหายไปเฉยๆ
+2. _First service tag wins_ (ตัดสินใจเก่า) — test ไปโผล่ใต้ service แรก ทั้งที่
+   มันแตะหลาย service ทำให้ contributor ใหม่งงว่า report ขึ้นใต้ service ไหน
 
-A dedicated `Cross-Service` epic mirrors the `tests/flows/` folder location, so
-source and report agree. Stakeholders/QA can also separate cross-service health
-from single-service health at a glance.
+Epic `Cross-Service` ทำให้ QA แยกดู health ของ cross-service ออกจาก single-service ได้ทันที
 
-**Trade-off.** One extra top-level epic in the tree. Acceptable because
-cross-service tests are a small minority and having their own home is clearer
-than first-tag-wins. The Tags filter still works as a secondary navigation path.
+> **สถานะ:** template นี้มี service เดียว (`users`) ยังไม่มี cross-service test —
+> โค้ดใน `allure-meta.ts` รองรับไว้แล้ว (เช็ค `serviceTags.length >= 2`) จะ active
+> เมื่อ test ติด service tag ตั้งแต่ 2 ตัวขึ้นไป (เช่นเพิ่ม posts ที่อ้าง user)
+
+**Trade-off.** เพิ่ม epic หนึ่งตัวที่ top level แต่ยอมรับได้เพราะ cross-service
+test มีจำนวนน้อยมาก และการมีบ้านของตัวเองชัดกว่าแบบ first-tag-wins
+Tags filter ยังคงใช้เป็น secondary navigation ได้ปกติ
 
 **Where.** [src/utils/allure-meta.ts](../src/utils/allure-meta.ts) —
-`applyAllureFromTags` (look for `serviceTags.length >= 2`)
+`applyAllureFromTags` (ดูส่วนที่เช็ค `serviceTags.length >= 2`)
 
 ---
 
-## 3. Schemas: strict resources, loose envelopes
+## 3. Schemas: lock เฉพาะ field ที่ประกาศ (`looseObject`)
 
-**Decision.** Resource shapes (`userSchema`, `productSchema`) set
-`additionalProperties: false`. Envelope schemas (`responseSchema`,
-`listResponseSchema`, error/empty) set `additionalProperties: true`.
+**Decision.** ทุก schema (`userData` เป็นต้น) ใช้ `z.looseObject` — **field ที่ประกาศชื่อ
+ไว้ถูก lock** (ต้องมี + type ตรง) แต่ field เกินที่ไม่ได้ประกาศ **ผ่านได้และถูกเก็บไว้**
+ใน parsed body ไม่ตัดทิ้ง
 
-**Reason.** Two failure modes need different protection:
+**Reason.** ต้องป้องกัน failure สองรูปแบบต่างกัน:
 
-- Resource drift (typo in field name, accidental rename) → catch loudly. This
-  is what contract tests exist for.
-- Envelope additions (`traceId`, `version`, `requestId` added by ops/platform
-  team) → must not break tests. These are operational metadata, not contract.
+- Resource drift (API ลบ/เปลี่ยนชื่อ field ที่เป็น contract เช่น `email` หาย) → schema
+  จับให้ดังเพราะ field ที่ประกาศไว้ขาด/type ผิด นี่คือสิ่งที่ contract test มีไว้เพื่อ
+- Field เกินที่ API แอบเพิ่ม (`traceId` หรือ field ที่ **หลุดมาไม่ควรมี** เช่น internal flag)
+  → ต้องไม่ทำให้ test พัง **แต่ต้องเก็บไว้ให้เห็น** เพราะ absence/leak test ต้องตรวจมันได้
+  (ถ้าใช้ `z.object` แบบ strip จะซ่อน leak จริงๆ ไว้เงียบๆ)
 
-**Trade-off.** Resource changes by the API team will break tests immediately
-(intended). Envelope changes are silent. If you need the envelope locked too,
-flip the envelope flags on a per-project basis.
+**Trade-off.** field เกินที่ API เพิ่มจะ "เงียบ" (ไม่ทำให้ test แดงเอง) — แต่จงใจ:
+contract test lock เฉพาะสิ่งที่ระบุไว้ ส่วน leak ที่ไม่ควรมีให้ behavioral assertion
+(เช่น `expect(json).not.toHaveProperty('password')`) เป็นคนจับ ไม่ใช่ schema
 
-> **Update (Zod era).** The AJV-era `src/core/schemas.ts` is gone; the same axis now
-> lives in the Zod convention (§13): every field a resource schema NAMES is locked
-> (typo/rename breaks loudly), while `looseObject` keeps envelopes & data open to
-> additions. Strictness moved from an `additionalProperties` flag to "which keys the
-> schema declares".
+> GoRest ไม่มี wrapper envelope (ส่ง bare resource) ดังนั้น "resource" กับ "envelope"
+> จึงเป็นสิ่งเดียวกัน — ใช้ `looseObject` ทั้งหมด ดู §12 (Zod conventions)
 
-**Where.** `src/services/<svc>/schemas.ts` (e.g.
-[src/services/products/schemas.ts](../src/services/products/schemas.ts))
+**Where.** [src/services/users/schemas.ts](../src/services/users/schemas.ts)
 
 ---
 
 ## 4. Validator = structural, Test = behavioral
 
-**Decision.** `*Validator.expect*Success` checks STRUCTURE (HTTP status, schema,
-business code `OK`, response time). Tests inline-`expect()` the VALUES they care
-about.
+**Decision.** `*Validator.expect*Success` ตรวจ STRUCTURE (HTTP status, schema,
+response time) ส่วน test inline-`expect()` ตรวจ VALUES ที่แต่ละ test สนใจ
 
-**Reason.** Validators are general — every test goes through them. Field-value
-assertions are specific — they vary per test. Putting field assertions in
-validators creates god-objects with parameter explosions; putting structural
-checks in every test creates copy-paste.
+**Reason.** Validator เป็น general — ทุก test ผ่านมัน ส่วน field-value assertion
+เฉพาะ — แตกต่างกันตาม test ถ้าใส่ field assertion ใน validator จะกลายเป็น
+god-object ที่มี parameter เยอะขึ้นเรื่อยๆ แต่ถ้าใส่ structural check ใน
+ทุก test ก็จะกลายเป็น copy-paste
 
-**The Rule of 3.** If the same field-value combo appears in 3+ tests, abstract
-it. Until then, keep it inline.
+**The Rule of 3.** ถ้า field-value combo เดิมปรากฏใน 3+ test ให้ abstract ออก
+จนกว่าจะถึงตอนนั้น ให้เขียน inline ไว้ก่อน
 
 **Where.** [src/core/BaseValidator.ts](../src/core/BaseValidator.ts) +
 service-specific validators
 
 ---
 
-## 5. Field-value assertions use `toMatchObject`
+## 5. Field-value assertions ใช้ `toMatchObject`
 
-**Decision.** Multi-field checks use `expect(json.data).toMatchObject({...})`,
-not multiple `toBe`.
+**Decision.** การเช็ค field หลายตัวใช้ `expect(json).toMatchObject({...})`
+ไม่ใช่หลาย `toBe`
 
 **Reason.**
 
-- All failing fields surface in one error (not one fail → fix → run → next fail).
-- Partial match — fields the test doesn't care about (`id`, `createdAt`) don't
-  need wildcard matchers.
-- Schema already locks the shape; `toMatchObject` only needs to lock the
-  _values_ the test cares about.
+- Field ที่ fail ทุกตัวจะแสดงใน error เดียว (ไม่ต้องรัน fix รัน fix ทีละตัว)
+- Partial match — field ที่ test ไม่สนใจ (`id`, `createdAt`) ไม่ต้องใส่ wildcard
+- Schema lock รูปร่างไว้แล้ว `toMatchObject` ต้องการแค่ lock _values_ ที่ test สนใจ
 
-**Trade-off.** `toMatchObject` allows extra fields. We rely on `expectSchema`
-(called by every `expect*Success` validator) to catch unexpected fields. The
-two work as a pair — don't drop the schema check thinking `toMatchObject` is
-enough.
+**Trade-off.** `toMatchObject` ยอมรับ field เพิ่มเติมได้ เราพึ่ง `expectSchema`
+(ที่เรียกใน `expect*Success` validator ทุกครั้ง) ให้จับ field แปลก ทั้งสองทำงานเป็น
+คู่กัน — อย่า drop schema check โดยคิดว่า `toMatchObject` เพียงพอแล้ว
 
-**Where.** Anywhere you'd write 2+ consecutive `expect(json.data.X).toBe(Y)`.
+**Where.** ทุกที่ที่จะเขียน 2+ consecutive `expect(json.X).toBe(Y)`
 
 ---
 
-## 6. Helpers throw on setup failure, not skip
+## 6. Helper throw เมื่อ setup fail (ไม่ใช่ skip)
 
-**Decision.** Provisioning helpers (`createTracked`, `createDisposableProduct`, etc.)
-throw with a descriptive message when the precondition API call fails.
+**Decision.** Provisioning helpers (`createDisposableUser` เป็นต้น) จะ throw
+พร้อม message ที่อธิบายชัดเจนเมื่อ precondition API call fail
 
-**Reason.** A failing precondition is a test failure, not a test skip. Silent
-skips hide infrastructure problems and let regressions ship. If a provisioning
-create returns 500, that's a real bug we want surfaced loudly. (Skipping is
-reserved for a MISSING dependency — e.g. credentials not configured — not a
-failing one; see `.claude/rules/fixtures.md` "degrade gracefully".)
+**Reason.** Precondition ที่ fail คือ test failure ไม่ใช่ test skip การ skip
+เงียบๆ ซ่อน infrastructure problem และปล่อยให้ regression ผ่านไป ถ้า provisioning
+create คืน 500 นั่นคือ bug จริงๆ ที่เราต้องการให้ดังๆ (การ skip สงวนไว้สำหรับ
+dependency ที่ MISSING เช่น credentials ไม่ได้ตั้งค่า ไม่ใช่ dependency ที่ fail
+ดู `.claude/rules/fixtures.md`)
 
-**Where.** [tests/products/provisioner.ts](../tests/products/provisioner.ts)
-
----
-
-## 7. `authToken` precedence: dynamic > static > skip
-
-**Decision.** Auth-token resolution checks in this order:
-
-1. A token minted by the service's own fixture / provisioner (runtime login)
-2. Skip the test with a descriptive message
-
-**Reason.** Provisioning a fresh account and logging in at runtime is the most
-realistic auth path (it exercises the login endpoint too) and keeps tests
-independent. Skipping with a message beats failing cryptically when no auth
-source (the per-worker admin pool) is configured.
-
-**Foot-gun.** Never consume `apiConfig.authToken` directly when a service provides
-its own token. The exemplar API is public, so the template has no live example —
-the reference pattern (per-worker admin account → provisioner → per-test token) is
-described in `.claude/rules/fixtures.md` "Provisioning stateful services" and
-docs/exercises.md exercise 5.
-
-**Where.** [src/config/api-config.ts](../src/config/api-config.ts) +
-[src/fixtures/base.ts](../src/fixtures/base.ts)
+**Where.** [tests/users/provisioner.ts](../tests/users/provisioner.ts)
 
 ---
 
-## 8. Every test resource uses `autotestSlug()`
+## 7. GoRest ใช้ personal Bearer token จาก env
 
-**Decision.** Resource names (user emails, product names/SKUs) start with the
-`TEST_PREFIX` (`autotest-` by default) via `autotestSlug()`. Never hardcode the
-prefix string.
+**Decision.** Suite นี้ทำงานตรงกับ GoRest public API โดยใช้ personal Bearer
+token จาก env var `GOREST_TOKEN` เป็น auth เพียงแหล่งเดียว เมื่อ token ไม่ได้ตั้งค่า
+test จะ skip พร้อม message อธิบาย ไม่มี runtime login หรือ admin pool
 
-**Reason.** Cleanup (the provisioner teardown, or any future global sweep) deletes
-only resources whose name starts with the prefix. Hardcoded prefixes drift when
-someone renames the constant. Tests that forget the prefix leak data into shared
-environments.
+**Reason.** GoRest เป็น public practice API ที่ใช้ personal token โดยตรง
+ไม่มี login endpoint หรือ session management pattern ที่ซับซ้อน การ skip
+เมื่อไม่มี token ดีกว่าการ fail แบบ cryptic เมื่อไม่มี auth source ตั้งค่า
 
-**Where.** [src/utils/test-data.ts](../src/utils/test-data.ts) +
-[tests/products/provisioner.ts](../tests/products/provisioner.ts) (cleanup) +
-[src/setup/global-teardown.ts](../src/setup/global-teardown.ts)
+**Where.** [tests/helpers.ts](../tests/helpers.ts) (`getGoRestToken`, `gorestConfig` ฉีด
+token) + [tests/users/fixtures.ts](../tests/users/fixtures.ts) (gate + skip เมื่อไม่มี token)
 
 ---
 
-## 9. Allure history: external file, not in `allure-results/`
+## 8. ทุก test resource ใช้ `autotestSlug()`
 
-**Decision.** `pnpm allure:generate` uses `--history-path allure-history.json`.
-`allure-history.json` is committed to the repo. `allure-results/` is wiped
-before every test run.
+**Decision.** Resource names (เช่น ชื่อ user, email) ต้องขึ้นต้นด้วย `TEST_PREFIX`
+(`autotest-` by default) ผ่าน `autotestSlug()` ห้าม hardcode prefix string
 
-**Reason.** Without history, the Allure Trend chart shows only "current run."
-With history, you see pass-rate evolution across builds. The history file is
-both read and written by the same flag — committing it gives CI runs and local
-runs the same baseline.
+**Reason.** prefix `autotest-` ทำ 2 อย่าง: (1) ทำให้ record ของเรา **จำได้ด้วยตา** ใน
+shared DB และ (2) เป็น safety net ถ้าวันหน้าทำ global prefix-sweep prefix ที่ hardcode
+จะ drift เมื่อใครเปลี่ยนชื่อ constant test ที่ลืมใส่ prefix จะ leak ทิ้งใน shared env
 
-**Trade-off.** `allure-history.json` will grow over time. If it gets large,
-prune it manually. Real-world experience: ~50 KB after 100 runs is fine.
+> **หมายเหตุ:** cleanup จริงตอนนี้ลบ **ตาม tracked id** (`provisioner.cleanup()` วน
+> ลบ id ที่ track ไว้) — **ยังไม่มี** global prefix-sweep; `global-teardown.ts` เป็น no-op
+> leak ที่หลุดจริงๆ พึ่ง GoRest reset ทุก 24 ชม. ดู `.claude/rules/fixtures.md`
 
-**Where.** [package.json](../package.json) `allure:generate` script
-
----
-
-## 10. Mock server is bundled, not optional
-
-> **History.** In the production project this template was extracted from, the bundled
-> mock was removed (2026-05-29): an internal QA repo running against live endpoints
-> found it maintenance overhead that could drift from the real API. **In this template
-> the decision is LIVE again** — a teaching template's first job is `pnpm test` green
-> offline on a fresh clone, and the seeded-bug lessons need a backend we control. Both
-> states of this decision are correct _for their context_; that is the lesson.
-
-**Decision.** The Hono mock in `mock/server.ts` boots automatically when `BASE_URL`
-is unset or points at the mock, via Playwright's `webServer` config. External
-environments don't start it.
-
-**Reason.** Zero setup for first-time contributors — `pnpm test` works on a
-fresh clone. The mock implements the full contract (state machine for products,
-real validation, real 4xx behavior) so tests against it actually exercise the
-same code paths as against the real API.
-
-**Trade-off.** Mock divergence from a real API is a risk. In a real project,
-mitigate by running the suite against a live environment periodically in CI — or
-remove the mock once a stable env exists (as the source project did).
-
-**Where.** [playwright.config.ts](../playwright.config.ts) `webServer` +
-[mock/server.ts](../mock/server.ts)
+**Where.** [src/utils/test-data.ts](../src/utils/test-data.ts) (`autotestSlug`) +
+[tests/users/provisioner.ts](../tests/users/provisioner.ts) (`track` + `cleanup`)
 
 ---
 
-## 11. Error response schema: `data` is optional-but-null-if-present
+## 9. Allure history: external file ไม่อยู่ใน `allure-results/`
 
-**Decision.** `errorResponseSchema` lists `data: { type: 'null' }` in
-`properties` but NOT in `required`.
+**Decision.** `pnpm allure:generate` ใช้ `--history-path allure-history.json`
+ไฟล์ `allure-history.json` ถูก commit เข้า repo ส่วน `allure-results/` จะ wipe
+ก่อนทุก test run
 
-**Reason.** Some APIs include `data: null` in error responses for envelope
-consistency (every response has the same shape). Others omit `data` entirely.
-Both are valid; we accept both. We refuse `data: <object>` in an error response
-because that's a server bug.
+**Reason.** ถ้าไม่มี history Allure Trend chart จะแสดงเฉพาะ "current run" เท่านั้น
+เมื่อมี history จะเห็น pass-rate evolution ข้าม build ได้ history file ถูกทั้ง
+อ่านและเขียนด้วย flag เดียวกัน — การ commit ทำให้ CI run และ local run ใช้
+baseline เดียวกัน
 
-**Do not add `data` to `required`.** That would break APIs that omit it from
-error bodies.
+**Trade-off.** `allure-history.json` จะโตขึ้นเรื่อยๆ ถ้ามันใหญ่เกินไปให้ prune
+ด้วยตนเอง จากประสบการณ์จริง: ~50 KB หลัง 100 run ถือว่าไม่มีปัญหา
 
-> **Update (Zod era).** The template's error envelope omits `data` entirely and the
-> Zod `errorEnvelope` is a `looseObject` that doesn't declare it — so both "absent"
-> and "`data: null`" pass, while a structured `data: <object>` in an error would
-> still surface in behavioral assertions. Same intent, new mechanism.
+**Where.** [package.json](../package.json) script `allure:generate`
 
-**Where.** `src/services/<svc>/schemas.ts` `errorEnvelope`
+---
+
+## 10. ไม่มี mock server
+
+Suite นี้รันตรงกับ GoRest เสมอ ไม่มี mock server bundled ไว้
+Token มาจาก env var `GOREST_TOKEN` — ถ้าไม่ตั้งค่า test จะ skip อัตโนมัติ
+ไม่ fail
 
 ---
 
 # Tooling decisions
 
-The numbered decisions above are about test patterns. Below are decisions about
-the tools themselves — what we picked and what we gave up.
+Decisions ที่มีหมายเลขข้างต้นเกี่ยวกับ test pattern ส่วนด้านล่างนี้คือ decisions
+เกี่ยวกับ tooling — เราเลือกอะไร และยอมสละอะไรไป
 
 ---
 
-## 12. Prettier + ESLint (not Biome.js)
+## 11. Prettier + ESLint (ไม่ใช่ Biome.js)
 
-**Decision.** Two separate tools: Prettier for formatting, ESLint for linting.
+**Decision.** ใช้สองเครื่องมือแยกกัน: Prettier สำหรับ formatting, ESLint
+สำหรับ linting
 
 **Reason.**
 
-- ESLint plugin ecosystem is much wider (typescript-eslint, eslint-plugin-playwright,
-  etc.). Many of the rules we care about don't exist in Biome yet.
-- Prettier has near-universal IDE support out of the box (`esbenp.prettier-vscode`).
-  Biome has an extension but adoption is uneven across editors / CI runners.
-- Team familiarity — Prettier + ESLint is the default mental model for most
-  TS/Node developers, so onboarding is faster.
+- ESLint plugin ecosystem กว้างกว่ามาก (typescript-eslint, eslint-plugin-playwright
+  เป็นต้น) หลาย rule ที่เราต้องการยังไม่มีใน Biome
+- Prettier มี IDE support เกือบทุกที่แบบ out of the box (`esbenp.prettier-vscode`)
+  ส่วน Biome มี extension แต่การใช้งานยังกระจัดกระจายตาม editor/CI runner
+- Team familiarity — Prettier + ESLint คือ default mental model ของ developer
+  TS/Node ส่วนใหญ่ onboarding จึงเร็วกว่า
 
-**Trade-off.** Biome is **5–20× faster** (Rust binary) and ships as one tool.
-On a small project the speed difference doesn't matter — `pnpm exec lint-staged`
-runs in under 2 seconds. If lint time ever becomes painful or the team wants
-fewer moving parts, Biome migration is mechanical (`biome migrate`).
+**Trade-off.** Biome เร็วกว่า **5–20 เท่า** (Rust binary) และเป็นเครื่องมือเดียว
+ในโปรเจกต์เล็กๆ ความต่างด้านความเร็วแทบไม่มีนัยสำคัญ — `pnpm exec lint-staged`
+รันไม่ถึง 2 วินาที ถ้า lint time เริ่มเป็นปัญหา หรือ team ต้องการ moving part
+น้อยลง การ migrate ไป Biome เป็น mechanical process (`biome migrate`)
 
 **Where.** [.prettierrc](../.prettierrc), [eslint.config.js](../eslint.config.js),
-[package.json](../package.json) `lint-staged` block
+[package.json](../package.json) block `lint-staged`
 
 ---
 
-## 13. Zod for response validation (was: AJV + JSON Schema)
+## 12. Zod สำหรับ response validation (เดิมใช้ AJV + JSON Schema)
 
-**Decision.** Response shape validation via **Zod** schemas in
-`src/services/<svc>/schemas.ts`. Each schema is the SINGLE SOURCE: the response
-data types are inferred from it (`z.infer`) in the service `types.ts`, so schema
-and types can no longer drift. `BaseValidator.expectSchema` runs `schema.safeParse`
-and surfaces failures via `z.prettifyError`.
+**Decision.** ตรวจ response shape ผ่าน **Zod** schemas ใน
+`src/services/<svc>/schemas.ts` แต่ละ schema คือ SINGLE SOURCE: types ของ
+response data ถูก infer มาจาก schema (`z.infer`) ทำให้ schema กับ type ไม่มีทางแตกต่างกันได้
+`BaseValidator.expectSchema` รัน `schema.safeParse` และแสดง failure ผ่าน
+`z.prettifyError`
 
-**Reversal note (2026-06-11).** This previously chose AJV + hand-written JSON
-Schema. Reviewing the actual codebase, two of the three stated AJV reasons did not
-hold here:
+**Reversal note (2026-06-11).** Decision นี้เดิมเลือก AJV + hand-written JSON
+Schema เมื่อทบทวนโค้ดจริง เหตุผลของ AJV สองในสามข้อไม่ได้ใช้จริงที่นี่:
 
-- The **"interoperable format"** benefit was theoretical. The hand-written schemas
-  were consumed ONLY by their own `*Validator` — nothing exported them to a contract
-  registry, Postman, or a faker, and no such tooling was in `package.json`. Backends
-  read the **OpenAPI spec** (`docs/openapi/`), not the test repo's schemas. The
-  realistic interop direction is spec → repo (generating types), not repo → backend.
-- **Performance** is irrelevant for a test suite validating a few hundred responses
-  per run (µs-scale difference).
+- ประโยชน์ด้าน **"interoperable format"** เป็นแค่ทฤษฎี hand-written schema
+  ถูกใช้เฉพาะใน `*Validator` ของตัวเอง ไม่มีอะไร export ออกไปสู่ contract
+  registry, Postman, หรือ faker เลย backend อ่าน **OpenAPI spec** ไม่ใช่ schema
+  ของ test repo ทิศทาง interop ที่สมเหตุสมผลคือ spec → repo (generate types)
+  ไม่ใช่ repo → backend
+- **Performance** ไม่มีความหมายสำหรับ test suite ที่ validate response ไม่กี่ร้อยตัว
+  ต่อ run (ต่างกันระดับ µs)
 
-What remained was the trade-off we were paying every day: **maintaining a JSON
-Schema in `schemas.ts` AND a parallel interface in `types.ts` by hand**. Zod
-collapses that to one source via `z.infer`, with better DX (refinements,
-discriminated unions) and a readable failure formatter. We accept losing the
-direct spec→schema path; if spec-driven generation is ever wanted, `openapi-zod-client`
-/ `ts-to-zod` cover it.
+สิ่งที่เหลืออยู่คือ trade-off ที่จ่ายทุกวัน: **maintain JSON Schema ใน `schemas.ts`
+AND interface คู่ขนานใน `types.ts` ด้วยมือ** Zod รวบมาเป็น source เดียวผ่าน
+`z.infer` พร้อม DX ที่ดีกว่า (refinements, discriminated unions) และ failure formatter
+ที่อ่านง่าย เรายอมรับว่าเสีย direct spec→schema path; ถ้าต้องการ spec-driven
+generation ใน future `openapi-zod-client` / `ts-to-zod` รองรับได้
 
 **Conventions.**
 
-- Envelopes use `z.looseObject` (NOT `z.object`) so unknown infra fields
-  (`requestId`, …) and **any leaked field** are KEPT on the parsed
-  body — the `additionalProperties: true` semantics the JSON Schemas had. This is
-  load-bearing: the products list projection test (TC-010) asserts the internal
-  `costPrice` key is ABSENT on the parsed items; a stripping `z.object` would mask
-  a real leak.
-- Const catalogs (`ProductCode`, `ProductStatus`, …) and **request** types stay
-  hand-written in `types.ts`. Only **response data** types are inferred.
-- An intentionally-shallow schema may keep a richer hand-written type (schema
-  validates the top shape, the type documents the full tree for behavioural
-  assertions) — use sparingly.
-- `types.ts` does `import type { … } from './schemas'`; `schemas.ts` imports the
-  const catalogs from `types.ts` as values. The type-only import is erased at
-  runtime, so there is **no import cycle**.
+- Envelope ใช้ `z.looseObject` (ไม่ใช่ `z.object`) เพื่อให้ infra field
+  แปลกๆ (`requestId` เป็นต้น) และ **field ที่หลุดมา** ถูก KEEP ไว้ใน parsed body
+  — เหมือน semantics `additionalProperties: true` ของ JSON Schema เดิม
+  ซึ่ง load-bearing: `z.object` แบบ strip จะซ่อน leak จริงๆ ไว้
+- Const catalogs และ **request** types ยังคงเขียนด้วยมือใน `types.ts`
+  เฉพาะ **response data** types เท่านั้นที่ infer
+- Schema ที่ตั้งใจ shallow อาจเก็บ hand-written type ที่ละเอียดกว่าไว้
+  (schema validate shape บน, type document tree ทั้งหมดสำหรับ behavioral assertions)
+  — ใช้แบบประหยัด
+- `types.ts` ทำ `import type { … } from './schemas'`; `schemas.ts` import
+  const catalogs จาก `types.ts` เป็น value การ import แบบ type-only จะถูก
+  erase ตอน runtime จึง **ไม่มี import cycle**
 
 **Where.** [src/core/BaseValidator.ts](../src/core/BaseValidator.ts),
 `src/services/<svc>/schemas.ts` + `src/services/<svc>/types.ts`
-(e.g. [src/services/products/](../src/services/products/); the old
-`src/core/schemas.ts` was removed — it only served an unused
-`{ data, message, success }` envelope).
 
 ---
 
-## 14. `test.step()` (not `@step` decorator)
+## 13. `test.step()` (ไม่ใช่ `@step` decorator)
 
-**Decision.** Multi-step flow tests use Playwright's built-in `test.step()` API,
-not decorator libraries like `allure-decorators`.
+**Decision.** Multi-step flow test ใช้ `test.step()` ของ Playwright โดยตรง
+ไม่ใช้ decorator library เช่น `allure-decorators`
 
-**Reason.** The `@step` decorator pattern is almost always a **Selenium/Java
-carry-over** — it comes from Java's Allure `@Step` annotation and the JUnit /
-TestNG class-based POM mental model. Teams migrating from Selenium-Java or
-.NET bring it across, but JS/Playwright doesn't need it: functions are
-first-class, and a string-label argument is the native equivalent of an
-annotation.
+**Reason.** Pattern `@step` decorator เกือบทั้งหมดมาจาก **Selenium/Java**
+— มาจาก annotation `@Step` ของ Allure ใน Java และ mental model แบบ class-based POM
+ของ JUnit/TestNG ทีมที่ย้ายมาจาก Selenium-Java หรือ .NET มักพา pattern นี้
+มาด้วย แต่ JS/Playwright ไม่ต้องการมัน: function เป็น first-class และ string-label
+argument คือ native equivalent ของ annotation
 
-Three concrete reasons we avoid it:
+เหตุผลสามข้อที่เราหลีกเลี่ยง:
 
-- **Decorators force class-based tests.** That fights Playwright's
-  fixture-and-function model — fixtures don't inject naturally into class
-  methods, `this`-binding gets confusing in async, parallelism is awkward.
-- **The TS decorator spec is in transition** (stage-3 TC39 ≠ the
-  `experimentalDecorators` flag most `@step` libraries depend on) — multi-year
-  maintenance liability.
-- **Inline reads better.** `await test.step('Publish product', ...)` puts the
-  label at the point of action; `@step('Publish product')` above a method
-  makes the reader scan up.
+- **Decorator บังคับให้เขียน test แบบ class-based** ซึ่งขัดกับ model ของ
+  Playwright ที่ใช้ fixture และ function — fixture inject เข้า class method
+  ไม่ natural, `this`-binding สับสนใน async, parallelism ยุ่งยาก
+- **TS decorator spec กำลังเปลี่ยน** (stage-3 TC39 ≠ flag `experimentalDecorators`
+  ที่ library `@step` ส่วนใหญ่พึ่งอยู่) — เป็น maintenance liability หลายปี
+- **อ่าน inline ง่ายกว่า** `await test.step('Create user', ...)` ใส่ label
+  ไว้ตรงจุดที่ action เกิด ส่วน `@step('Create user')` เหนือ method ทำให้
+  ต้องเลื่อนขึ้นไปอ่าน
 
-`test.step()` also integrates with Playwright's trace viewer + HTML report +
-Allure tree automatically — decorator libraries usually hook into Allure only.
+`test.step()` ยังรวมเข้ากับ trace viewer, HTML report และ Allure tree ของ
+Playwright โดยอัตโนมัติ — decorator library มักจะ hook เฉพาะ Allure เท่านั้น
 
-**Rule of thumb.** Pick the idiom of the current tool, not the idiom of the
-previous tool.
+**Rule of thumb.** เลือก idiom ของ tool ปัจจุบัน ไม่ใช่ idiom ของ tool เก่า
 
-**Trade-off.** A few more characters per step. If verbosity hurts (rare in API
-tests), reach for helper functions before reaching for decorators.
+**Trade-off.** เพิ่มตัวอักษรเล็กน้อยต่อ step ถ้า verbosity เป็นปัญหา (พบน้อยมากใน
+API test) ให้ใช้ helper function ก่อนที่จะหันไปใช้ decorator
 
-**Where.** All `tests/**/flows/*.spec.ts`, e.g.
-[tests/orders/flows/order-fulfillment.spec.ts](../tests/orders/flows/order-fulfillment.spec.ts)
+**Where.** `tests/**/flows/*.spec.ts` ทั้งหมด
 
 ---
 
-## 15. Hono in-process mock (not MSW / nock / Express)
+## 14. Husky (ไม่ใช่ lefthook / simple-git-hooks)
 
-> **History.** Removed in the source project 2026-05-29 alongside decision 10;
-> **LIVE again in this template** (same reinstatement note as §10).
-
-**Decision.** Mock backend is a real Hono HTTP server in `mock/server.ts`,
-started by Playwright's `webServer` config.
+**Decision.** Husky v9 สำหรับ git hooks ตั้งค่าไว้ใน `.husky/`
 
 **Reason.**
 
-- **Real network stack.** Tests exercise actual TCP/HTTP — headers, status
-  codes, content-type negotiation, connection lifecycle. MSW intercepts at the
-  fetch layer and skips this entirely.
-- **Stateful semantics.** The products mock implements a real state machine
-  (`draft → published → archived` with terminal state). MSW handlers can do
-  this but become unwieldy fast; a real server is the natural fit.
-- **Closest to production.** Same code path as hitting a real API. Tests can
-  use `expectResponseTime` realistically. If the real API replaces the mock
-  later, the test code doesn't change.
-- **Lightweight.** Hono is ~30 KB, sub-100ms cold start, TypeScript-native.
-  Express is heavier and JS-first.
+- **Default ใน TS/Node ecosystem** documentation, Stack Overflow, และ tutorial
+  ของ third-party ต่างก็ assume Husky คนที่เคยทำงานกับ JS project ในช่วง 5 ปีที่ผ่านมา
+  จะคุ้นเคยกับมัน
+- **Zero-config ใน v9** แค่ shell script ใน `.husky/<hook>` — ไม่มี `huskyrc`
+  ไม่มี `pre-commit` package wrapper
+- **Portable** เป็น pure JS ทำงานได้บนทุก platform ที่ pnpm รันได้
 
-**Trade-off.** More code than MSW (which is ~20 lines of handlers vs. a small
-server). The mock requires the port (8787 by default, `MOCK_PORT` to override) to
-be free. For a template that ships a complete contract demo, the extra code is
-worth it.
-
-**Where.** [mock/server.ts](../mock/server.ts),
-[playwright.config.ts](../playwright.config.ts) `webServer` block
-
----
-
-## 16. Husky (not lefthook / simple-git-hooks)
-
-**Decision.** Husky v9 for git hooks, configured under `.husky/`.
-
-**Reason.**
-
-- **Default in TS/Node ecosystem.** Documentation, Stack Overflow answers, and
-  third-party tutorials all assume Husky. Familiar to anyone who has worked on
-  a JS project in the last 5 years.
-- **Zero-config in v9.** Just `.husky/<hook>` shell scripts — no `huskyrc`,
-  no `pre-commit` package wrapper.
-- **Portable.** Pure JS, works on any platform pnpm runs on.
-
-**Trade-off.** **lefthook** is faster (Go binary, parallel hooks). **simple-git-hooks**
-has zero dependencies (~50 lines of JS). Husky has neither advantage — but it's
-the default a new contributor expects. If hook runtime ever becomes a problem
-(currently <2s pre-commit), switch to lefthook.
+**Trade-off.** **lefthook** เร็วกว่า (Go binary, parallel hooks) **simple-git-hooks**
+มี dependency เป็นศูนย์ (~50 บรรทัด JS) Husky ไม่ได้เปรียบทั้งสองอย่าง — แต่เป็น
+default ที่ contributor ใหม่คาดหวัง ถ้า hook runtime เริ่มเป็นปัญหา (ตอนนี้ pre-commit
+ใช้เวลา <2s) ให้ switch ไป lefthook
 
 **Where.** [.husky/](../.husky/),
-[package.json](../package.json) `prepare` script
+[package.json](../package.json) script `prepare`
 
 ---
 
-## 17. Allure 3 `awesome` (not classic Allure 2 / not custom dashboard)
+## 15. Allure 3 `awesome` (ไม่ใช่ classic Allure 2 / ไม่ใช่ custom dashboard)
 
-**Decision.** Reports generated via `allure awesome` (the Allure 3 UI),
-not the classic Allure 2 HTML or a custom dashboard.
+**Decision.** Generate report ผ่าน `allure awesome` (Allure 3 UI) ไม่ใช่
+classic Allure 2 HTML หรือ custom dashboard
 
 **Reason.**
 
-- **Three-level Behaviors tree** (epic → feature → story) gives QA/Dev the
-  drill-down that classic Allure flattens.
-- **Trend across runs** via `--history-path allure-history.json` — single
-  committed file, works locally and in CI.
-- **Categories** classify failures (schema / status / SLA / infra) so triage
-  scales to many tests.
-- **Single binary** — same `allure` npm package serves both `awesome` and
-  classic; no extra install.
+- **Three-level Behaviors tree** (epic → feature → story) ให้ QA/Dev drill down
+  ได้ ส่วน classic Allure แบน
+- **Trend ข้าม run** ผ่าน `--history-path allure-history.json` — ไฟล์เดียว
+  ที่ commit ไว้ ทำงานได้ทั้ง local และ CI
+- **Categories** จำแนก failure (schema / status / SLA / infra) ทำให้ triage
+  scale ได้กับ test จำนวนมาก
+- **Single binary** — `allure` npm package เดียวกันรองรับทั้ง `awesome` และ
+  classic ไม่ต้อง install เพิ่ม
 
-**Trade-off.** A custom dashboard (Grafana / Datadog / GH Pages with custom HTML)
-would let you track **organisation-wide** metrics (cross-repo flakiness, SLA
-trends per team). Allure is per-run-centric. If your org grows beyond ~3 repos
-and needs cross-cutting reports, Allure becomes one of several sources rather
-than the source of truth. Not a problem at current scale.
+**Trade-off.** Custom dashboard (Grafana / Datadog / GH Pages แบบ custom HTML)
+จะช่วยติดตาม metric ระดับ **organisation-wide** (cross-repo flakiness, SLA trends
+ต่อ team) ได้ Allure เน้น per-run ถ้า org โตเกิน ~3 repo และต้องการ report ตัดข้าม
+Allure จะกลายเป็นหนึ่งในหลาย source ไม่ใช่ source เดียว — แต่ยังไม่เป็นปัญหาในขนาดปัจจุบัน
 
-**Where.** [package.json](../package.json) `allure:*` scripts,
+**Where.** [package.json](../package.json) scripts `allure:*`,
 [playwright.config.ts](../playwright.config.ts) reporter config
 
 ---
 
-## 18. AOM client per service (not per story / flow)
+## 16. AOM client ต่อ service (ไม่ใช่ต่อ story / flow)
 
-**Context.** Contributors arriving from BDD or Selenium-Java backgrounds often
-expect a client class per user story (e.g. `CheckoutClient`,
-`RegistrationClient`). This template takes a different axis: one client per
-**service domain** (`ProductsClient`, `OrdersClient`).
+**Context.** Contributor ที่มาจาก BDD หรือ Selenium-Java มักคาดว่า client class
+จะแยกตาม user story (เช่น `RegistrationClient`) template นี้ใช้แกนต่างกัน:
+client หนึ่งตัวต่อ **service domain** (`UsersClient`)
 
-**Decision.** Client abstraction is per-service. Stories / behaviors live one
-level up — at the test file:
+**Decision.** Client abstraction อยู่ที่ระดับ service Stories / behaviors อยู่
+หนึ่งชั้นขึ้นไป — ที่ test file:
 
-- `@isolated` tests (`tests/<svc>/*.spec.ts`) cover per-endpoint contracts.
-- `@flow` tests (`tests/<svc>/flows/*.spec.ts`) cover multi-step single-service
-  stories.
-- Cross-service stories (e.g. `tests/orders/flows/order-fulfillment.spec.ts`)
-  compose multiple service clients in one test body and carry both service tags.
+- `@isolated` tests (`tests/<svc>/*.spec.ts`) ครอบคลุม per-endpoint contracts
+- `@flow` tests (`tests/<svc>/flows/*.spec.ts`) ครอบคลุม multi-step single-service stories
+- Cross-service stories compose หลาย service client ใน test body เดียว
+  และติด tag ของทั้งสอง service
 
 **Reason.**
 
-- REST is resource-oriented; clients mirror that. One source of truth per
-  endpoint, not five copies of `POST /users` scattered across story clients.
-- Stories overlap services (a checkout uses users + products + orders). Resource
-  domains do not overlap. Picking the more orthogonal axis makes refactors safer.
-- Client = HTTP surface (the _what_). Test = behavior (the _when / why_).
-  Mixing them turns the client into a god-object that grows with every new
-  story.
-- Aligns with Playwright's official guidance ("group by resource or feature,
-  not by HTTP method") and the JS / TypeScript ecosystem convention.
+- REST เป็น resource-oriented; client สะท้อนสิ่งนั้น มี source of truth หนึ่งที่ต่อ
+  endpoint ไม่ใช่สำเนาห้าชุดของ `POST /users` กระจายอยู่ใน story client
+- Stories ทับซ้อนกันระหว่าง service (checkout ใช้ users + orders) แต่ resource
+  domain ไม่ทับกัน การเลือก axis ที่ orthogonal กว่าทำให้ refactor ปลอดภัยกว่า
+- Client = HTTP surface (the _what_) Test = behavior (the _when / why_)
+  ผสมกันจะทำให้ client กลายเป็น god-object ที่โตตามทุก story ใหม่
+- สอดคล้องกับ official guidance ของ Playwright และ convention ของ JS/TypeScript ecosystem
 
-**Trade-off.** A complex multi-step flow lives entirely in the test body and
-must wire several clients together. If the same flow appears in 3+ tests,
-abstract it into a helper that **composes** existing service clients — don't
-build a `CheckoutClient` that re-implements user / product / order endpoints.
+**Trade-off.** Complex multi-step flow ต้องอยู่ใน test body และต้องเชื่อม
+client หลายตัวเอง ถ้า flow เดียวกันปรากฏใน 3+ test ให้ abstract เป็น helper
+ที่ **compose** service client ที่มีอยู่แล้ว — ไม่ใช่สร้าง client ใหม่ที่ reimplement endpoint
 
-**Related.** §14 ("Pick the idiom of the current tool, not the previous one")
-— the same rationale applies: AOM-per-service is the Playwright / JS-native
-idiom; per-story client classes are a carry-over from frameworks where stories
-had their own classes.
+**Related.** §13 ("เลือก idiom ของ tool ปัจจุบัน") — เหตุผลเดียวกัน: AOM-per-service
+คือ idiom แบบ Playwright/JS native; per-story client class เป็น carry-over
+จาก framework ที่ story มี class ของตัวเอง
 
-**Where.** [src/services/](../src/services/) — one folder per service.
-[tests/](../tests/) — one folder per service; cross-service stories live in the
-flows folder of the service that OWNS the scenario (the order owns fulfillment).
+**Where.** [src/services/](../src/services/) — หนึ่ง folder ต่อ service
+[tests/](../tests/) — หนึ่ง folder ต่อ service
 
 ---
 
-## 19. Deterministic reference data is seeded + referenced as code constants, not env (2026-06-06)
+## 17. Reference data ที่ deterministic seed ไว้ + ใช้เป็น code constants (ไม่ใช่ env) (2026-06-06)
 
-**Context.** Tests sometimes need server-side **reference data** the suite itself
-must not create per-test — e.g. a role/permission catalog: a test that needs "a
-second, lower-privilege role" can't provision one on the fly when role management
-is an admin feature outside the suite's scope. In the source project the test env
-initially had only one role, so every such test was blocked.
+**Context.** Test บางครั้งต้องการ **reference data** ฝั่ง server ที่ suite ไม่ควร
+สร้างต่อ test — เช่น role/permission catalog: test ที่ต้องการ "role สิทธิ์ต่ำกว่า
+อีกตัว" ไม่สามารถ provision ได้ on the fly เมื่อ role management เป็น admin feature
+นอก scope ของ suite
 
-**Decision.** Reference data is **seeded into each environment by a script** whose
-source of truth is a committed matrix (one file, reviewed like code). Tests
-reference the seeded identifiers as **constants in code** (e.g. a
-`PROVISION_ROLE_CODE` const in the service's helpers) — **never** env vars. The
-identifiers are not secret and are deterministic (seeded identically across
-envs), so they belong in code; env-gating them just adds a way for envs to drift.
+**Decision.** Reference data ถูก **seed เข้าแต่ละ environment โดย script** ที่มี
+source of truth เป็นไฟล์ committed matrix (ไฟล์เดียว review เหมือน code) Test
+ใช้ identifier ที่ seed ไว้เป็น **constants ในโค้ด** — **ห้ามใช้ env var** identifier
+เหล่านี้ไม่ใช่ secret และ deterministic (seed เหมือนกันทุก env) จึงควรอยู่ในโค้ด
+การ env-gate ทำให้ env drift ได้
 
-**Reason.** Three failure modes this kills:
+**Reason.** สาม failure mode ที่ decision นี้กำจัด:
 
-- _Env drift_ — an identifier living in `.env.<env>` can differ per env; a
-  constant + identical seeding cannot.
-- _Hidden coupling_ — a reviewer sees exactly which reference data a test depends
-  on by reading code, not by diffing env files.
-- _Blocked coverage_ — "no second role exists" stops being a reason a test can't
-  run; the seed script makes the precondition real everywhere, including a fresh
-  env.
+- _Env drift_ — identifier ที่อยู่ใน `.env.<env>` อาจต่างกันแต่ละ env; constant
+  - identical seeding ทำไม่ได้
+- _Hidden coupling_ — reviewer เห็นชัดเจนว่า test depend กับ reference data
+  ไหนโดยอ่านโค้ด ไม่ต้อง diff env file
+- _Blocked coverage_ — "ไม่มี role ที่สอง" ไม่ใช่เหตุผลที่ test รันไม่ได้อีกต่อไป
+  seed script ทำให้ precondition มีจริงทุก env รวมถึง env ใหม่
 
-**Boundary.** This is for reference data that is **read, never mutated** by
-tests. Anything a test mutates must be provisioned per-test/per-worker instead
-(`.claude/rules/fixtures.md` "Provisioning stateful services") — seeding mutable
-state would couple parallel tests to each other.
+**Boundary.** ใช้กับ reference data ที่ test **อ่านเท่านั้น ไม่ mutate** สิ่งที่ test
+mutate ต้อง provision ต่อ test/worker แทน — seeding mutable state จะทำให้
+parallel test coupling กัน
 
-**Where.** The exemplar API has no auth, so the template carries no live seed
-script — the pattern's shape was: `scripts/<matrix>.ts` (committed source of
-truth) + `scripts/seed-*.ts` (idempotent apply, also invoked fail-soft from
-global-setup), with constants in `tests/<svc>/helpers.ts`. Re-introduce that pair
-when your API has reference data.
+**Where.** GoRest ไม่มี reference data แบบ role/permission ที่ต้อง seed (และไม่มี admin
+API) ดังนั้น template นี้จึงไม่มี live seed script — รูปแบบของ pattern คือ:
+`scripts/<matrix>.ts` (source of truth ที่ commit) +
+`scripts/seed-*.ts` (idempotent apply เรียกจาก global-setup ด้วย) พร้อม constants
+ใน `tests/<svc>/helpers.ts` ให้นำ pair นี้กลับมาเมื่อ API มี reference data
 
 ---
 
-## 20. Response time: two-tier soft-target + hard-ceiling (not a single SLA) (2026-06-12)
+## 18. Response time: two-tier soft-target + hard-ceiling (ไม่ใช่ SLA เดียว) (2026-06-12)
 
-**Context.** Every request ran a single hard SLA (`MAX_RESPONSE_MS=5000`) inside
-`BaseClient`, so a functional contract test FAILED whenever the response took
-longer than 5s. On a shared test environment that produced recurring false reds: a
-different, unrelated endpoint breached 7–14s each run while every functional
-assertion was correct. That is latency jitter, not a defect — but it coloured the
-regression gate red and eroded trust in the suite. The 5000ms was never a contract
-value either: no latency target was specified anywhere in the API contract, and
-Decision 13 already notes performance is not what this suite measures.
+**Context.** ทุก request เคยรัน hard SLA เดียว (`MAX_RESPONSE_MS=5000`) ใน
+`BaseClient` ทำให้ functional contract test **FAIL** เมื่อ response ช้าเกิน 5s
+ใน shared test environment เกิด false red ซ้ำซาก: endpoint ที่ไม่เกี่ยวกันเลย
+breach 7–14s ทุก run ทั้งที่ functional assertion ถูกทุกอย่าง นั่นคือ latency
+jitter ไม่ใช่ defect — แต่ทำให้ regression gate แดง และทำลายความน่าเชื่อถือของ suite
 
-**Decision.** Split the budget into two tiers (`ApiConfig.responseTargetMs` +
+**Decision.** แบ่ง budget เป็นสองชั้น (`ApiConfig.responseTargetMs` +
 `responseCeilingMs`, env `RESPONSE_TARGET_MS` / `RESPONSE_CEILING_MS`):
 
-- `ms > ceiling` → **hard fail** — the response reads as a hang, a functional test
-  should break.
-- `target < ms <= ceiling` → **soft warn** — a non-failing `⚠ Slow response` step
-  in the report keeps the latency visible without red'ing a correct test.
-- `ms <= target` → silent (no report node, as before).
+- `ms > ceiling` → **hard fail** — response นั้นถือว่า hang; functional test ควรพัง
+- `target < ms <= ceiling` → **soft warn** — step `⚠ Slow response` ที่ไม่ fail ใน
+  report ทำให้ latency ยังมองเห็นได้โดยไม่ทำให้ test ที่ถูกต้อง red
+- `ms <= target` → ไม่มีอะไร (ไม่มี report node เหมือนเดิม)
 
-`RESPONSE_TARGET_MS=5000`, `RESPONSE_CEILING_MS=15000` in every env. Provisioning
-configs set both tiers to 30s so setup latency neither warns nor fails.
+`RESPONSE_TARGET_MS=5000`, `RESPONSE_CEILING_MS=15000` ในทุก env
+Provisioning config ตั้ง tier ทั้งสองเป็น 30s เพื่อให้ setup latency ไม่ warn ไม่ fail
 
-**Reason.** ISTQB separates functional from non-functional testing; coupling a
-latency threshold to a functional pass/fail conflates them. A single-sample
-per-request check is a poor performance signal anyway (no percentiles, no warmup
-exclusion — one GC pause trips it), so its only honest job here is catching a
-true hang. Keeping the measurement visible (warn) preserves the latency signal
-for triage without making it a gate.
+**Reason.** ISTQB แยก functional testing จาก non-functional testing; การผูก
+latency threshold กับ functional pass/fail ปนสองอย่างนี้เข้าด้วยกัน การเช็ค
+single-sample ต่อ request เป็น performance signal ที่แย่อยู่แล้ว (ไม่มี percentile,
+ไม่มี warmup exclusion — GC pause เดียวก็ trip ได้) งานที่ honest ของมันที่นี่คือ
+จับ true hang เท่านั้น การ keep measurement ไว้ (warn) รักษา latency signal
+สำหรับ triage โดยไม่ทำให้มันเป็น gate
 
-**Trade-off.** A genuine, sustained latency regression in the 5–15s band shows
-only as warnings, not a failure — acceptable because real performance coverage
-belongs in a dedicated, multi-sample perf check (separately tagged, run against a
-perf-stable env), not piggybacked on every contract call. Per-endpoint budgets
-were rejected: the breaches were whole-env jitter spread across unrelated
-endpoints, so per-endpoint numbers would chase infra noise and drift.
+**Trade-off.** Latency regression จริงที่ sustained อยู่ในช่วง 5–15s จะเห็นเป็นแค่
+warning ไม่ใช่ failure — ยอมรับได้เพราะ performance coverage จริงๆ ควรอยู่ใน
+dedicated multi-sample perf check (tag แยก รันกับ env ที่ stable) ไม่ควร
+piggyback ไปกับทุก contract call
 
 **Where.** [src/core/types.ts](../src/core/types.ts) (`ApiConfig`),
-[src/config/api-config.ts](../src/config/api-config.ts) (loads both, falls back to
-legacy `MAX_RESPONSE_MS` for the target),
+[src/config/api-config.ts](../src/config/api-config.ts) (โหลดทั้งสอง, fallback
+legacy `MAX_RESPONSE_MS` สำหรับ target),
 [src/core/BaseValidator.ts](../src/core/BaseValidator.ts)
 (`expectResponseTime` soft/hard), `.env.*` (`RESPONSE_TARGET_MS` /
-`RESPONSE_CEILING_MS`).
+`RESPONSE_CEILING_MS`)
 
 ---
 
-## How to add a new decision
+## 19. pnpm ผ่าน Corepack (ไม่ใช่ npm / yarn / global install)
 
-When you make a choice that future-you (or a new contributor) might question:
+**Context.** โปรเจคต้องการ package manager หนึ่งตัวที่ทุกคน + CI ใช้เวอร์ชัน
+เดียวกัน lockfile รูปแบบเดียว ถ้าปล่อยให้บางคนใช้ npm บางคนใช้ pnpm คนละ
+เวอร์ชัน → lockfile ขัดกัน, "works on my machine", phantom dependency
 
-1. Add a section to this file with the same template: Context / Decision /
-   Reason / Trade-off / Where.
-2. Date the section if it relates to time-sensitive constraints
-   ("as of 2026-05 the API does X").
-3. Link from the relevant code with a one-line comment:
+**Decision.** ใช้ **pnpm** โดย pin เวอร์ชันไว้ใน `package.json`
+(`"packageManager": "pnpm@10.18.0"`) และให้ **Corepack** (ติดมากับ Node แล้ว)
+เป็นคนเรียกเวอร์ชันที่ pin ให้อัตโนมัติ — setup คือ `corepack enable` ครั้งเดียว
+**ไม่** ใช้ `npm install -g pnpm` (global install ทำให้เวอร์ชันลอยจากที่ pin ไว้)
+
+**Reason.**
+
+- _pnpm vs npm_ — pnpm ใช้ content-addressable store + symlink → ลงเร็วกว่า,
+  ใช้ disk น้อยกว่า, และ strict กว่า (เข้าถึงได้เฉพาะ dependency ที่ประกาศไว้
+  จริง → จับ phantom dependency ที่ npm ปล่อยผ่าน)
+- _Corepack vs global install_ — `packageManager` field + Corepack การันตีว่า
+  ทุกเครื่องและ CI ใช้ pnpm **เวอร์ชันเป๊ะเดียวกัน** โดยไม่ต้องลงเอง การ
+  `npm i -g pnpm` ได้เวอร์ชันล่าสุดเสมอ ซึ่งอาจไม่ตรงกับที่ทดสอบไว้
+
+**Trade-off.** Corepack ไม่ใช่ของบังคับ — ใครมี pnpm อยู่แล้ว (วิธีใดก็ตาม)
+`pnpm install` ก็ทำงานเลย Corepack แค่เป็นทางที่การันตีว่าได้เวอร์ชันตรงที่ pin ไว้
+จะพังก็ต่อเมื่อเครื่องไม่มี pnpm เลย **และ** ไม่ได้เปิด Corepack — แก้ด้วยการเขียน
+prerequisite ให้ชัดใน README/CONTRIBUTING ว่าเลือกทางไหนก็ได้
+
+**Where.** [package.json](../package.json) (`packageManager`, `engines.pnpm`),
+[.nvmrc](../.nvmrc) (Node version), [README.md](../README.md) +
+[CONTRIBUTING.md](../CONTRIBUTING.md) (Prerequisites)
+
+---
+
+## วิธีเพิ่ม decision ใหม่
+
+เมื่อคุณตัดสินใจอะไรที่ตัวเองในอนาคต (หรือ contributor ใหม่) อาจตั้งคำถาม:
+
+1. เพิ่ม section ในไฟล์นี้ด้วย template เดิม: Context / Decision / Reason /
+   Trade-off / Where
+2. ใส่วันที่ถ้าเกี่ยวกับ constraint ที่มีเวลาจำกัด
+   ("ณ 2026-05 API ทำ X")
+3. Link จาก code ที่เกี่ยวข้องด้วย comment หนึ่งบรรทัด:
    `// see docs/decisions.md §N`
-4. If a decision becomes obsolete, mark the section **SUPERSEDED** with a link
-   to the new section — don't delete it. Future-you needs the history.
+4. ถ้า decision ล้าสมัยแล้ว ให้ mark section นั้นว่า **SUPERSEDED** พร้อม link
+   ไปยัง section ใหม่ — อย่าลบออก เพราะตัวเองในอนาคตต้องการ history นั้น

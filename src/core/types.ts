@@ -2,7 +2,7 @@
 export interface ApiConfig {
   baseUrl: string
   /**
-   * Two-tier response-time budget (see BaseValidator.expectResponseTime + docs/decisions.md §20):
+   * Two-tier response-time budget (see BaseValidator.expectResponseTime + docs/decisions.md §18):
    * - `responseTargetMs` (soft): over this → a NON-failing "slow response" warning in the report.
    * - `responseCeilingMs` (hard): over this → the call FAILS (the response reads as a hang, not
    *   env jitter). Decoupled so a functional contract test is never red'd by a transient latency
