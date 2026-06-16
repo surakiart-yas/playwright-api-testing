@@ -1,0 +1,43 @@
+{
+  // Format on save with Prettier + ESLint auto-fix.
+  // Matches what lint-staged runs on pre-commit, so devs see the same result locally.
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+
+  // Workspace TypeScript version is auto-detected from node_modules/typescript/.
+  // First time opening a .ts file, VS Code will prompt: pick "Use Workspace Version".
+  // Manual: Cmd+Shift+P → "TypeScript: Select TypeScript Version".
+  // (Old `typescript.tsdk` / `typescript.enablePromptUseWorkspaceTsdk` are deprecated.)
+
+  // ESLint v9+ auto-detects flat config (eslint.config.js). No setting needed.
+  // (`eslint.useFlatConfig` and `eslint.validate` were deprecated in extension v3+.)
+
+  // Hide generated noise from the file explorer.
+  "files.exclude": {
+    "**/.DS_Store": true,
+    "allure-results": true,
+    "allure-report": true,
+    "playwright-report": true,
+    "test-results": true,
+    "node_modules": true
+  },
+
+  // Searches skip the same paths.
+  "search.exclude": {
+    "allure-results": true,
+    "allure-report": true,
+    "playwright-report": true,
+    "test-results": true,
+    "pnpm-lock.yaml": true,
+    "allure-history.json": true
+  },
+
+  // Consistent indentation (matches .editorconfig).
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true
+}

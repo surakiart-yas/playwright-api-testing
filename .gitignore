@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Secrets / auth cache
+.auth/
+# Local Claude Code permission grants — machine-specific, never commit
+.claude/settings.local.json
+# Ignore every env file (real hosts + admin creds + bypass value) EXCEPT the committed template.
+.env
+.env.*
+!.env.example
+
+# Test artefacts
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+allure-history.json
+
+# Build output
+dist/
+
+# Editor / OS junk
+.DS_Store
+*.swp
+*~
+
+# Local archives (e.g. zip exports of the project)
+*.zip
+
+# Test design scratch (test-design + test-case skills write here)
+.test-design-scratch/

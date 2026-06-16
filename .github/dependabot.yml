@@ -1,0 +1,51 @@
+# Dependabot — https://docs.github.com/code-security/dependabot/dependabot-version-updates
+# Keeps npm + GitHub Actions dependencies fresh with minimal PR noise.
+
+version: 2
+updates:
+  # npm — production + dev deps
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Bangkok
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - dependencies
+    groups:
+      # Bundle minor + patch updates to reduce PR noise.
+      # Majors stay as individual PRs so they get reviewed carefully.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Lock to TS 6.x — major bumps need manual review for breaking changes
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      # Lock to Playwright 1.x within a minor band — majors often change config shape
+      - dependency-name: '@playwright/test'
+        update-types: [version-update:semver-major]
+
+  # GitHub Actions used by workflows in .github/workflows/
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: ci
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      # Bundle every GitHub Actions bump into ONE PR (low-risk) — no more
+      # one-branch-per-action noise in the graph.
+      github-actions:
+        patterns:
+          - '*'

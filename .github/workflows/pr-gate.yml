@@ -1,0 +1,53 @@
+name: PR Gate
+
+on:
+  pull_request:
+    # gitflow: feature → develop → main. Gate BOTH so feature PRs (which target develop) are
+    # checked too, not only release PRs into main.
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'mock/**'
+      - 'docs/**'
+      - 'scripts/**'
+      - 'playwright.config.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'tsconfig.json'
+      - 'eslint.config.js'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Lint, Type Check & Test (mock)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm lint
+
+      - run: pnpm type-check
+
+      - run: pnpm format:check
+
+      - run: pnpm check:consistency
+
+      # The gate runs the REGRESSION scope, not the full suite: RED-by-design specs
+      # (deliberately failing against the mock's seeded bugs — see
+      # .claude/rules/testing.md "Spec is the source of truth") carry no scope tag, so
+      # they stay visible in full runs without blocking PRs. The mock boots via
+      # Playwright's webServer — no secrets, no network.
+      - run: pnpm test:regression

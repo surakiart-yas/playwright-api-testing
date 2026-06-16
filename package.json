@@ -1,0 +1,62 @@
+{
+  "name": "api-automation-template",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "test": "node -e \"require('fs').rmSync('./allure-results', {recursive:true, force:true})\" && playwright test",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:regression": "playwright test --grep @regression",
+    "test:debug": "cross-env DEBUG_API=true playwright test",
+    "report": "playwright show-report",
+    "allure:generate": "node -e \"require('fs').rmSync('./allure-report', {recursive:true, force:true})\" && tsx scripts/strip-error-context.ts && pnpm exec allure awesome allure-results -o allure-report --name \"API Test Report\" --group-by \"epic,feature,story\" --history-path allure-history.json",
+    "allure:open": "pnpm exec allure open allure-report",
+    "allure": "pnpm allure:generate && pnpm allure:open",
+    "allure:clean": "node -e \"require('fs').rmSync('./allure-results', {recursive:true, force:true})\"",
+    "test:report": "pnpm test; pnpm allure",
+    "lint": "eslint 'src/**/*.ts' 'tests/**/*.ts'",
+    "lint:fix": "eslint --fix 'src/**/*.ts' 'tests/**/*.ts'",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "type-check": "tsc --noEmit",
+    "check:consistency": "bash scripts/check-consistency.sh",
+    "verify": "pnpm lint && pnpm type-check && pnpm check:consistency && pnpm test:regression",
+    "prepare": "husky",
+    "test:users": "playwright test tests/users"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{js,mjs,cjs,md,json,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.0.2",
+    "@commitlint/config-conventional": "^21.0.2",
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^25.9.2",
+    "@typescript-eslint/eslint-plugin": "^8.60.1",
+    "@typescript-eslint/parser": "^8.60.1",
+    "allure": "^3.9.0",
+    "allure-js-commons": "^3.9.0",
+    "allure-playwright": "^3.9.0",
+    "cross-env": "^10.1.0",
+    "eslint": "^10.4.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
+    "prettier": "^3.8.3",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "zod": "^4.4.3"
+  },
+  "packageManager": "pnpm@10.18.0"
+}
