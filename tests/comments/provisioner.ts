@@ -1,12 +1,12 @@
 import { test, type APIRequestContext, type TestInfo } from '@playwright/test'
 import { UsersClient } from '@services/users/UsersClient'
-import { Gender, UserStatus } from '@services/users/types'
 import { PostsClient } from '@services/posts/PostsClient'
 import { CommentsClient } from '@services/comments/CommentsClient'
 import type { Comment } from '@services/comments/types'
 import type { ApiConfig } from '@core/types'
 import { autotestSlug } from '@utils/test-data'
 import { attachReusedSubject } from '@utils/reporting'
+import { provisionParentUser } from '../shared/provisionParentUser'
 
 const PROVISION_MAX_RESPONSE_MS = 30_000
 
@@ -117,20 +117,7 @@ export class CommentsProvisioner {
   private async ensureParentPost(): Promise<number> {
     if (this.parentPostId) return this.parentPostId
     // 1. parent user
-    const uslug = autotestSlug('commentowner')
-    const ures = await this.users().createUser({
-      name: uslug,
-      email: `${uslug}@example.com`,
-      gender: Gender.MALE,
-      status: UserStatus.ACTIVE,
-    })
-    const ujson = await ures.json()
-    if (ures.status() !== 201 || typeof ujson?.id !== 'number') {
-      throw new Error(
-        `Provisioning parent user failed: HTTP ${ures.status()} ${JSON.stringify(ujson)}`,
-      )
-    }
-    const userId: number = ujson.id
+    const userId = await provisionParentUser(this.users(), 'commentowner')
     this.parentUserId = userId
     this.createdUsers.push(userId)
     // 2. parent post

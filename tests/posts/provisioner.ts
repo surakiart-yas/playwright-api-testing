@@ -1,11 +1,11 @@
 import { test, type APIRequestContext, type TestInfo } from '@playwright/test'
 import { UsersClient } from '@services/users/UsersClient'
-import { Gender, UserStatus } from '@services/users/types'
 import { PostsClient } from '@services/posts/PostsClient'
 import type { Post } from '@services/posts/types'
 import type { ApiConfig } from '@core/types'
 import { autotestSlug } from '@utils/test-data'
 import { attachReusedSubject } from '@utils/reporting'
+import { provisionParentUser } from '../shared/provisionParentUser'
 
 const PROVISION_MAX_RESPONSE_MS = 30_000
 
@@ -108,22 +108,10 @@ export class PostsProvisioner {
 
   private async ensureParentUser(): Promise<number> {
     if (this.parentUserId) return this.parentUserId
-    const slug = autotestSlug('postowner')
-    const res = await this.users().createUser({
-      name: slug,
-      email: `${slug}@example.com`,
-      gender: Gender.MALE,
-      status: UserStatus.ACTIVE,
-    })
-    const json = await res.json()
-    if (res.status() !== 201 || typeof json?.id !== 'number') {
-      throw new Error(
-        `Provisioning parent user failed: HTTP ${res.status()} ${JSON.stringify(json)}`,
-      )
-    }
-    this.parentUserId = json.id
-    this.createdUsers.push(json.id)
-    return json.id
+    const userId = await provisionParentUser(this.users(), 'postowner')
+    this.parentUserId = userId
+    this.createdUsers.push(userId)
+    return userId
   }
 
   private async createTrackedPost(): Promise<Post> {
